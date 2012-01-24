@@ -1,17 +1,10 @@
 var express = require('express');
-var everyauth = require('everyauth');
-var mongodb = require('mongodb');
+var db = require('./db');
 var mongoStore = require('connect-mongodb');
+var dropbox = require('./dropbox');
+var config = require('./config');
 
-var db = new mongodb.Db('brackets', new mongodb.Server("127.0.0.1", 27017, {}), {});
-
-var config = null;
-
-function init(conf) {
-    config = conf;
-
-    console.log('the static dir is: ' + config.staticDir);
-    
+function init() {
     console.log('creating app');
     var app = createAppServer(config);
 
@@ -26,7 +19,6 @@ function init(conf) {
         console.log("Caught exception at top level: " + err);
         console.trace();
     });
-
 }
 
 function createAppServer(config) {
@@ -37,14 +29,14 @@ function createAppServer(config) {
         app.set('views', __dirname + '/views');
         app.use(express.logger());
         app.use(express.bodyParser());
-	app.use(express.cookieParser());
+        app.use(express.cookieParser());
         app.use(express.session({ secret: config.cookieSecret
-                                , store: new mongoStore({db: db, collection: "sessions"})
+                                , store: new mongoStore({db: db.db, collection: "sessions"})
                                 }));
-        app.use(everyauth.middleware());
         app.use(app.router)
         app.use(express.static(config.staticDir))
         app.use(express.directory(config.staticDir));
+	app.use(express.favicon());
         app.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
     });
 
@@ -55,6 +47,26 @@ function configureRoutes(app) {
     app.get('/throwerror', function(req, res) {
         throw "this sucks";
     });
+
+    app.get('/auth/login', function(req, res) {
+        dropbox.login(req, res);
+    });
+
+    app.get('/auth/logout', function(req, res) {
+        dropbox.logout(req, res);
+    });
+
+    app.get('/auth/callback', function(req, res) {
+	dropbox.callback(req, res);
+    });
+
+    app.get('/test', function(req, res) {
+	dropbox.test(req, res);
+    });
+
 }
 
-exports.init = init;
+// start the whole thing up
+// we wait until the next tick to give the debugger time to get going
+process.nextTick(init);
+

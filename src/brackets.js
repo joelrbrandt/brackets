@@ -41,6 +41,9 @@ define(function(require, exports, module) {
         };
 
     brackets.inBrowser = !brackets.hasOwnProperty("fs");
+    if (brackets.inBrowser) {
+	brackets.fs = require("DropboxFileSystem");
+    }
 
     brackets.DIALOG_BTN_CANCEL = "cancel";
     brackets.DIALOG_BTN_OK = "ok";

@@ -8,10 +8,9 @@
   { "lib": "./lib"
   }
 , "dependencies" : 
-  { "everyauth": ">= 0.2.27"
-  , "mongodb": ">= 0.9.7"
+  { "mongodb": ">= 0.9.7"
   , "express": ">= 2.5.2"
   , "connect-mongodb": ">= 1.1.2"
-  , "less" : ">= 1.1.6"
+  , "dbox" : ">= 0.0.1"
   }
 }

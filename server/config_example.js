@@ -5,8 +5,7 @@ module.exports =
     , staticDir : __dirname + "/../src"
     , cookieSecret : "" // random string of characters
     , dropbox :
-      { id : "" // provided by dropbox
+      { key : "" // provided by dropbox
       , secret : "" // provided by dropbox
-      , callbackAddress : baseUrl + "/auth/dropbox_callback"
       }
     };
