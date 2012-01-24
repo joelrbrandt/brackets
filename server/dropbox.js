@@ -6,17 +6,22 @@ var client = dbox.createClient({ app_key: config.dropbox.key,
 			         root: "sandbox" }); // TODO: change this once we get full account access
 
 
-function options_or_login(req, res) {
+function getApiCallOpts(req, res) {
     if (req.session.access_token !== undefined && req.session.access_token_secret !== undefined) {
 	return {oauth_token: req.session.access_token,
 		oauth_token_secret: req.session.access_token_secret};
     } else {
 	console.log('user not logged in, redirecting...');
 	res.redirect('/auth/login');
-	return null;
+	return false;
     }
 }
 
+function respondNotLoggedIn(req, res) {
+    req.session.destroy();
+    res.statusCode = 401;
+    res.end('Not logged in to Dropbox');
+}
 
 function login(req, res) {
     console.log('in login')
@@ -63,9 +68,9 @@ function callback(req, res) {
 
 function test(req, res) {
     console.log('in test');
-    var options = options_or_login(req, res);
+    var options = getApiCallOpts(req, res);
     if (!options) {
-	return;
+	res.redirect('/auth/login');
     }
     client.metadata('/', options, function(status, reply) {
 	if (status === 200) {
@@ -81,7 +86,124 @@ function test(req, res) {
     });
 }
 
+function configureFileSystemRoutes(app) {
+
+    app.get('/fs/readdir', function readdir(req, res) {
+	console.log('in readdir');
+	var options = getApiCallOpts(req, res);
+	if (!options) {
+	    respondNotLoggedIn(req, res);
+	}
+	var path = req.query.p;
+
+	client.metadata(path, options, function(status, reply) {
+	    if (status === 200) {
+		var m = JSON.parse(reply);
+		if (!m.is_dir) {
+		    res.statusCode = 404; // TODO: Change to a "is not a directory" specific error
+		    res.end();
+		}
+		else {
+		    var result = [];
+		    if (m.contents !== undefined && m.contents.length !== undefined) {
+			for (var i = 0; i < m.contents.length; i++) {
+			    var fullpath = m.contents[i].path
+			    result.push(fullpath.substr(fullpath.lastIndexOf("/")+1));
+			}
+		    }
+		    res.end(JSON.stringify(result));
+		}
+	    }
+	    else if (status === 401) { // token expired
+		respondNotLoggedIn(req, res);
+	    }
+	    else {
+		res.statusCode = status;
+		res.end(reply);
+	    }
+	});
+    });
+
+    app.get('/fs/stat', function stat(req, res) {
+	console.log('in stat');
+	var options = getApiCallOpts(req, res);
+	if (!options) {
+	    respondNotLoggedIn(req, res);
+	}
+	var path = req.query.p;
+
+	client.metadata(path, options, function(status, reply) {
+	    if (status === 200) {
+		var m = JSON.parse(reply);
+		var result = {is_dir: m.is_dir};
+		res.end(JSON.stringify(result));
+	    }
+	    else if (status === 401) { // token expired
+		respondNotLoggedIn(req, res);
+	    }
+	    else {
+		res.statusCode = status;
+		res.end(reply);
+	    }
+	});
+    });
+
+
+    app.get('/fs/readfile', function readfile(req, res) {
+	// TODO: We should get metadata first to make sure this is a reasonably sized file
+	console.log('in readfile');
+	var options = getApiCallOpts(req, res);
+	if (!options) {
+	    respondNotLoggedIn(req, res);
+	}
+	var path = req.query.p;
+
+	client.get(path, options, function(status, reply) {
+	    if (status === 200) {
+		res.end(reply);
+	    }
+	    else if (status === 401) { // token expired
+		respondNotLoggedIn(req, res);
+	    }
+	    else {
+		res.statusCode = status;
+		res.end(reply);
+	    }
+	});
+    });
+
+    app.post('/fs/writefile', function writefile(req, res) {
+	// TODO: We should get metadata first to make sure this is a reasonably sized file
+	console.log('in writefile');
+	var options = getApiCallOpts(req, res);
+	if (!options) {
+	    respondNotLoggedIn(req, res);
+	}
+	var path = req.body.p;
+	var data = req.body.d;
+	console.log("here's the path: " + path);
+	console.log("here's the data:\n" + data);
+
+	client.put(path, data, options, function(status, reply) {
+	    if (status === 200) {
+		res.end(JSON.stringify(reply));
+	    }
+	    else if (status === 401) { // token expired
+		respondNotLoggedIn(req, res);
+	    }
+	    else {
+		res.statusCode = status;
+		res.end(reply);
+	    }
+	});
+    });
+
+
+
+}
+
 exports.login = login;
 exports.logout = logout;
 exports.callback = callback;
 exports.test = test;
+exports.configureFileSystemRoutes = configureFileSystemRoutes;

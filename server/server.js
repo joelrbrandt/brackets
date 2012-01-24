@@ -28,6 +28,7 @@ function createAppServer(config) {
         console.log('configuring express app...');
         app.set('views', __dirname + '/views');
         app.use(express.logger());
+	app.use(express.query());
         app.use(express.bodyParser());
         app.use(express.cookieParser());
         app.use(express.session({ secret: config.cookieSecret
@@ -64,6 +65,8 @@ function configureRoutes(app) {
 	dropbox.test(req, res);
     });
 
+    dropbox.configureFileSystemRoutes(app);
+    
 }
 
 // start the whole thing up

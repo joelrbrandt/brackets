@@ -211,6 +211,11 @@ define(function(require, exports, module) {
         ,   resultRenderTree
         ,   isFirstProjectOpen = false;
 
+	if (brackets.inBrowser) {
+	    rootPath = "/";  // TODO: Do something better than this hack
+	    isFirstProjectOpen = true;
+	}
+
         if (rootPath === null || rootPath === undefined) {
             // Load the last known project into the tree
             rootPath = prefs.projectPath;
@@ -219,7 +224,7 @@ define(function(require, exports, module) {
             // TODO (jasonsj): handle missing paths, see issue #100
             _projectInitialLoad.previous = prefs.projectTreeState;
 
-            if (brackets.inBrowser) {
+            if (brackets.inBrowser && false) {
                 // In browser: dummy folder tree (hardcoded in ProjectManager)
                rootPath = "DummyProject";
             }
@@ -227,10 +232,13 @@ define(function(require, exports, module) {
 
         // Set title
         var projectName = rootPath.substring(rootPath.lastIndexOf("/") + 1);
+	if (projectName === "") {
+	    projectName = "ROOT!"
+	}
         $("#project-title").html(projectName);
 
         // Populate file tree
-        if (brackets.inBrowser) {
+        if (brackets.inBrowser && false) {
             // Hardcoded dummy data for local testing, in jsTree JSON format
             // (we leave _projectRoot null)
             var subfolderInner = { data:"Folder_inner", children:[
@@ -262,6 +270,21 @@ define(function(require, exports, module) {
                     // go idle until a node is expanded - at which time it'll call us again to fetch the node's
                     // immediate children, and so on.
                     resultRenderTree = _renderTree(_treeDataProvider);
+
+		    // BUG: This code was originally outside of the closure, which meant that 
+		    // "done" could have been assigned to an "undefined" object
+		    // This might not be the right place either because the inBrowser case needs it
+		    resultRenderTree.done(function () {
+			console.log("done called");
+			result.resolve();
+
+			if (isFirstProjectOpen) {
+			    $(exports).triggerHandler("initializeComplete", _projectRoot);
+			}
+		    });
+		    resultRenderTree.fail(function () {
+			result.reject();
+		    });
                 },
                 function(error) {
                     brackets.showModalDialog(
@@ -274,16 +297,6 @@ define(function(require, exports, module) {
             );
         }
 
-        resultRenderTree.done(function () {
-            result.resolve();
-
-            if (isFirstProjectOpen) {
-                $(exports).triggerHandler("initializeComplete", _projectRoot);
-            }
-        });
-        resultRenderTree.fail(function () {
-            result.reject();
-        });
 
         return result;
     }
