@@ -2,5 +2,5 @@ Thumbs.db
 src/brackets.css
 src/brackets.min.css
 
-node_modules
-src/server/config.js
+server/node_modules
+server/config.js
