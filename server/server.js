@@ -1,3 +1,5 @@
+var fs = require('fs');
+var http = require('http');
 var express = require('express');
 var db = require('./db');
 var mongoStore = require('connect-mongodb');
@@ -5,14 +7,18 @@ var dropbox = require('./dropbox');
 var config = require('./config');
 
 function init() {
+    console.log('creating redirect server');
+    var redirect = createRedirectServer(config);
+    redirect.listen(3000, "", function () { console.log("redirect server running on port 3000"); });
+
     console.log('creating app');
     var app = createAppServer(config);
 
     console.log('setting up routes');
     configureRoutes(app);
     
-    console.log('starting app listening...')
-    app.listen(3000, "", function () { console.log("brackets server running on port 3000"); });
+    console.log('starting app listening...');
+    app.listen(3001, "", function () { console.log("brackets server running on port 3001"); });
     console.log('...done starting listening')
 
     process.on('uncaughtException', function uncaughtExceptionHandler(err) {
@@ -21,8 +27,31 @@ function init() {
     });
 }
 
+function createRedirectServer(config) {
+    var server = http.createServer(function redirectServerHandler (req, res) {
+	res.writeHead(301, {'Location': config.baseUrl + req.url});
+	res.end();
+    });
+    return server;
+}
+
+function readSSLCerts(config) {
+    var result = { cert: fs.readFileSync(config.ssl.certFile)
+                   , key:  fs.readFileSync(config.ssl.keyFile),
+                 };
+    if (config.ssl.caBundleFiles) {
+        var ca = [];
+        for (var i = 0; i < config.ssl.caBundleFiles.length; ++i) {
+            ca.push(fs.readFileSync(config.ssl.caBundleFiles[i]));
+        }
+        result.ca = ca;
+    }
+    return result;
+}
+
 function createAppServer(config) {
-    var app = express.createServer();
+    var options = readSSLCerts(config);
+    var app = express.createServer(options);
 
     app.configure( function configureExpress() {
         console.log('configuring express app...');
