@@ -4,3 +4,4 @@ src/brackets.min.css
 
 server/node_modules
 server/config.js
+server/ssl
