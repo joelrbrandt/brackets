@@ -50,6 +50,12 @@
                     <ul class="dropdown-menu">
                         <li><a href="#" id="menu-debug-runtests">Run Tests</a></li>
                         <!--<li><a href="#" id="menu-debug-wordwrap">Toggle Word Wrap</a></li>-->
+                        <li>
+                            <a href="#" id="menu-debug-jslint">
+                                Enable JSLint
+                                <span id="jslint-enabled-checkbox" style="float:right;">&#10003;</span>
+                            </a>
+                        </li>
                     </ul>
                 </li>
             </ul>
@@ -101,17 +107,26 @@
                 <div class="title-wrapper">
                     <div class="title"></div>
                 </div>
+                <div id="gold-star">
+                    &#9733;
+                </div>
             </div>
             <div id="editorHolder">
                 <div id="notEditor">
                     <div id="notEditorContent">{&nbsp;&nbsp;}</div>
                 </div>
             </div>
+            <div id="jslint-results">
+                <div class="toolbar">
+                    <div class="title">JSLint errors</div>
+                </div>
+                <div class="table-container"></div>
+            </div>
         </div>
     </div>
 
     <!-- Modal Windows -->
-    <div id="error-dialog" class="modal hide fade">
+    <div id="error-dialog" class="modal hide">
         <div class="modal-header">
             <a href="#" class="close">&times;</a>
             <h3 class="dialog-title">Error</h3>
@@ -123,7 +138,7 @@
             <a href="#" class="dialog-button btn primary" data-button-id="ok">OK</a>
         </div>
     </div>
-    <div id="save-close-dialog" class="modal hide fade">
+    <div id="save-close-dialog" class="modal hide">
         <div class="modal-header">
             <a href="#" class="close">&times;</a>
             <h3 class="dialog-title">Save Changes</h3>

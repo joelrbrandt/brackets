@@ -2,8 +2,13 @@
  * Copyright 2011 Adobe Systems Incorporated. All Rights Reserved.
  */
 
-define(function(require, exports, module) {
-    CommandManager = require("CommandManager");
+/*jslint vars: true, plusplus: true, devel: true, browser: true, nomen: true, indent: 4, maxerr: 50 */
+/*global define: false */
+
+define(function (require, exports, module) {
+    'use strict';
+    
+    var CommandManager = require("CommandManager");
 
     // TODO: Move KeyMap into separate module
     
@@ -21,7 +26,7 @@ define(function(require, exports, module) {
          *
          * @param {KeyMap} keymap The keymap to install.
          */
-        installKeymap: function(keymap) {
+        installKeymap: function (keymap) {
             this._keymap = keymap;
         },
 
@@ -31,11 +36,11 @@ define(function(require, exports, module) {
          * @param {string} A key-description string.
          * @return {boolean} true if the key was processed, false otherwise
          */
-        handleKey: function(key) {
+        handleKey: function (key) {
             if (this._keymap && this._keymap.map[key]) {
                 CommandManager.execute(this._keymap.map[key]);
                 return true;
-            }        
+            }
             return false;
         }
     };
@@ -57,10 +62,10 @@ define(function(require, exports, module) {
      * @constructor
      * @param {map} map An object mapping key-description strings to command IDs.
      */
-    var KeyMap = function(map) {
+    var KeyMap = function (map) {
         if (map === undefined) {
             throw new Error("All parameters to the KeyMap constructor must be specified");
-        }    
+        }
         this.map = map;
     };
     

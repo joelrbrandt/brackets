@@ -2,6 +2,9 @@
  * Copyright 2011 Adobe Systems Incorporated. All Rights Reserved.
  */
 
+/*jslint vars: true, plusplus: true, devel: true, browser: true, nomen: true, indent: 4, maxerr: 50 */
+/*global define: false, $: false, brackets: false, FileError: false */
+
 /**
  * ProjectManager is the model for the set of currently open project. It is responsible for
  * creating and updating the project tree when projects are opened and when changes occur to
@@ -14,28 +17,53 @@
  * These are jQuery events, so to listen for them you do something like this:
  *    $(ProjectManager).on("eventname", handler);
  */
-define(function(require, exports, module) {
+define(function (require, exports, module) {
+    'use strict';
+    
     // Load dependent non-module scripts
     require("thirdparty/jstree_pre1.0_fix_1/jquery.jstree");
 
     // Load dependent modules
-    var NativeFileSystem    = require("NativeFileSystem").NativeFileSystem
-    ,   PreferencesManager  = require("PreferencesManager")
-    ,   DocumentManager     = require("DocumentManager")
-    ,   EditorManager       = require("EditorManager")
-    ,   CommandManager      = require("CommandManager")
-    ,   Commands            = require("Commands")
-    ,   Strings             = require("strings")
-    ,   FileViewController  = require("FileViewController")
-    ;
+    var NativeFileSystem    = require("NativeFileSystem").NativeFileSystem,
+        PreferencesManager  = require("PreferencesManager"),
+        DocumentManager     = require("DocumentManager"),
+        EditorManager       = require("EditorManager"),
+        CommandManager      = require("CommandManager"),
+        Commands            = require("Commands"),
+        Strings             = require("strings"),
+        FileViewController  = require("FileViewController");
     
-    $(FileViewController).on("documentSelectionFocusChange", function(event) {
+    /**
+     * @private
+     * Reference to the tree control
+     * @type {jQueryObject}
+     */
+    var _projectTree = null;
+    
+    /**
+     * @private
+     * @see getProjectRoot()
+     */
+    var _projectRoot = null;
+
+    /**
+     * @private
+     * Used to initialize jstree state
+     */
+    var _projectInitialLoad = {
+        previous : [],
+        id : 0,
+        fullPathToIdMap : {}
+    };
+    
+    $(FileViewController).on("documentSelectionFocusChange", function (event) {
         var curDoc = DocumentManager.getCurrentDocument();
-        if(curDoc !== null && FileViewController.getFileSelectionFocus() != FileViewController.WORKING_SET_VIEW){
-            $("#project-files-container li").is( function ( index ) {
+        if ((curDoc !== null)
+                && (FileViewController.getFileSelectionFocus() !== FileViewController.WORKING_SET_VIEW)) {
+            $("#project-files-container li").is(function (index) {
                 var entry = $(this).data("entry");
                 
-                if( entry && entry.fullPath == curDoc.file.fullPath && !_projectTree.jstree("is_selected", $(this)) ){
+                if (entry && entry.fullPath === curDoc.file.fullPath && !_projectTree.jstree("is_selected", $(this))) {
                     //we don't want to trigger another selection change event, so manually deselect
                     //and select without sending out notifications
                     _projectTree.jstree("deselect_all");
@@ -44,8 +72,7 @@ define(function(require, exports, module) {
                 }
                 return false;
             });
-        }
-        else {
+        } else {
             _projectTree.jstree("deselect_all");
         }
     });
@@ -63,11 +90,6 @@ define(function(require, exports, module) {
     function getProjectRoot() {
         return _projectRoot;
     }
-    /**
-     * @private
-     * @see getProjectRoot()
-     */
-    var _projectRoot = null;
     
     /**
      * Returns true if absPath lies within the project, false otherwise.
@@ -75,10 +97,10 @@ define(function(require, exports, module) {
      */
     function isWithinProject(absPath) {
         var rootPath = _projectRoot.fullPath;
-        if (rootPath.charAt(rootPath.length - 1) != "/") {  // TODO: standardize whether DirectoryEntry.fullPath can end in "/"
+        if (rootPath.charAt(rootPath.length - 1) !== "/") {  // TODO: standardize whether DirectoryEntry.fullPath can end in "/"
             rootPath += "/";
         }
-        return (absPath.indexOf(rootPath) == 0);
+        return (absPath.indexOf(rootPath) === 0);
     }
     /**
      * If absPath lies within the project, returns a project-relative path. Else returns absPath
@@ -88,69 +110,50 @@ define(function(require, exports, module) {
     function makeProjectRelativeIfPossible(absPath) {
         if (isWithinProject(absPath)) {
             var relPath = absPath.slice(_projectRoot.fullPath.length);
-            if (relPath.charAt(0) == '/') {  // TODO: standardize whether DirectoryEntry.fullPath can end in "/"
+            if (relPath.charAt(0) === '/') {  // TODO: standardize whether DirectoryEntry.fullPath can end in "/"
                 relPath = relPath.slice(1);
             }
             return relPath;
         }
         return absPath;
     }
-    
-    
-    /**
-     * @private
-     * Reference to the tree control
-     * @type {jQueryObject}
-     */
-    var _projectTree = null;
-
-    
-    /**
-     * @private
-     * Used to initialize jstree state
-     */
-    var _projectInitialLoad =
-        { previous : []
-        , id : 0
-        , fullPathToIdMap : {}
-        };
 
     /**
      * @private
      * Preferences callback. Saves current project path.
      */
-    function _savePreferences( storage ) {
+    function _savePreferences(storage) {
         // save the current project
         storage.projectPath = _projectRoot.fullPath;
 
         // save jstree state
-        var openNodes = []
-        ,   projectPathLength = _projectRoot.fullPath.length + 1
-        ,   entry
-        ,   fullPath
-        ,   shortPath
-        ,   depth;
+        var openNodes = [],
+            projectPathLength = _projectRoot.fullPath.length + 1,
+            entry,
+            fullPath,
+            shortPath,
+            depth;
 
         // Query open nodes by class selector
-        $(".jstree-open").each( function ( index ) {
-            entry = $( this ).data("entry");
+        $(".jstree-open").each(function (index) {
+            entry = $(this).data("entry");
 
-            if ( entry.fullPath ) {
+            if (entry.fullPath) {
                 fullPath = entry.fullPath;
 
                 // Truncate project path prefix
-                shortPath = fullPath.slice( projectPathLength );
+                shortPath = fullPath.slice(projectPathLength);
 
                 // Determine depth of the node by counting path separators.
                 // Children at the root have depth of zero.
                 depth = shortPath.split("/").length - 1;
 
                 // Map tree depth to list of open nodes
-                if ( openNodes[ depth ] === undefined ) {
-                    openNodes[ depth ] = [];
+                if (openNodes[depth] === undefined) {
+                    openNodes[depth] = [];
                 }
 
-                openNodes[ depth ].push( fullPath );
+                openNodes[depth].push(fullPath);
             }
         });
 
@@ -158,40 +161,184 @@ define(function(require, exports, module) {
         storage.projectTreeState = openNodes;
     }
 
+
     /**
-     * Displays a browser dialog where the user can choose a folder to load.
-     * (If the user cancels the dialog, nothing more happens).
+     * @private
+     * Given an input to jsTree's json_data.data setting, display the data in the file tree UI
+     * (replacing any existing file tree that was previously displayed). This input could be
+     * raw JSON data, or it could be a dataprovider function. See jsTree docs for details:
+     * http://www.jstree.com/documentation/json_data
      */
-    function openProject() {
-        // Confirm any unsaved changes first. We run the command in "prompt-only" mode, meaning it won't
-        // actually close any documents even on success; we'll do that manually after the user also oks
-        //the folder-browse dialog.
-        CommandManager.execute(Commands.FILE_CLOSE_ALL, { promptOnly: true })
-        .done(function() {
-            // Pop up a folder browse dialog
-            NativeFileSystem.showOpenDialog(false, true, "Choose a folder", null, null,
-                function(files) {
-                    // If length == 0, user canceled the dialog; length should never be > 1
-                    if (files.length > 0) {
-                        // Actually close all the old files now that we know for sure we're proceeding
-                        DocumentManager.closeAll();
-                        
-                        // Load the new project into the folder tree
-                        loadProject( files[0] );
+    function _renderTree(treeDataProvider) {
+        var projectTreeContainer = $("#project-files-container"),
+            result = new $.Deferred();
+
+        // Instantiate tree widget
+        // (jsTree is smart enough to replace the old tree if there's already one there)
+        _projectTree = projectTreeContainer
+            .jstree(
+                {
+                    plugins : ["ui", "themes", "json_data", "crrm"],
+                    json_data : { data: treeDataProvider, correct_state: false },
+                    core : { animation: 0 },
+                    themes : { theme: "brackets", url: "styles/jsTreeTheme.css", dots: false, icons: false },
+                        //(note: our actual jsTree theme CSS lives in brackets.less; we specify an empty .css
+                        // file because jsTree insists on loading one itself)
+                    strings : { loading : "Loading ...", new_node : "New node" }    // TODO: localization
+                }
+            )
+            .bind(
+                "select_node.jstree",
+                function (event, data) {
+                    var entry = data.rslt.obj.data("entry");
+                    if (entry.isFile) {
+                        FileViewController.openAndSelectDocument(entry.fullPath, "ProjectManager");
                     }
-                },
-                function(error) {
-                    brackets.showModalDialog(
-                          brackets.DIALOG_ID_ERROR
-                        , Strings.ERROR_LOADING_PROJECT
-                        , Strings.format(Strings.OPEN_DIALOG_ERROR, error.code)
-                    );
+                }
+            )
+            .bind(
+                "reopen.jstree",
+                function (event, data) {
+                    // This handler fires for the initial load and subsequent
+                    // reload_nodes events. For each depth level of the tree, we open
+                    // the saved nodes by a fullPath lookup.
+                    if (_projectInitialLoad.previous.length > 0) {
+                        // load previously open nodes by increasing depth
+                        var toOpenPaths = _projectInitialLoad.previous.shift(),
+                            toOpenIds   = [];
+        
+                        // use path to lookup ID
+                        $.each(toOpenPaths, function (index, value) {
+                            toOpenIds.push(_projectInitialLoad.fullPathToIdMap[value]);
+                        });
+        
+                        // specify nodes to open and load
+                        data.inst.data.core.to_open = toOpenIds;
+                        _projectTree.jstree("reload_nodes", false);
+                    }
+                    if (_projectInitialLoad.previous.length === 0) {
+                        result.resolve();
+                    }
                 }
             );
+
+        // jstree has a default event handler for dblclick that attempts to clear the
+        // global window selection (presumably because it doesn't want text within the tree
+        // to be selected). This ends up messing up CodeMirror, and we don't need this anyway
+        // since we've turned off user selection of UI text globally. So we just unbind it,
+        // and add our own double-click handler here.
+        // Filed this bug against jstree at https://github.com/vakata/jstree/issues/163
+        _projectTree.bind("init.jstree", function () {
+            _projectTree
+                .unbind("dblclick.jstree")
+                .bind("dblclick.jstree", function (event) {
+                    var entry = $(event.target).closest("li").data("entry");
+                    if (entry.isFile) {
+                        FileViewController.addToWorkingSetAndSelect(entry.fullPath);
+                    }
+                });
         });
-        // if fail, don't open new project: user canceled (or we failed to save its unsaved changes)
+        
+        return result;
+    }
+    
+    /** @param {Entry} entry File or directory to filter */
+    function _shouldShowInTree(entry) {
+        if (entry.name[0] === ".") {       // "." prefix is always hidden on Mac
+            return false;
+        }
+        
+        if (entry.name === "Thumbs.db") {  // "Thumbs.db" hidden file auto-generated by Win
+            return false;
+        }
+        
+        return true;
     }
 
+    /**
+     * @private
+     * Given an array of NativeFileSystem entries, returns a JSON array representing them in the format
+     * required by jsTree. Saves the corresponding Entry object as metadata (which jsTree will store in
+     * the DOM via $.data()).
+     *
+     * Does NOT recursively traverse the file system: folders are marked as expandable but are given no
+     * children initially.
+     *
+     * @param {Array.<Entry>} entries  Array of NativeFileSystem entry objects.
+     * @return {Array} jsTree node data: array of JSON objects
+     */
+    function _convertEntriesToJSON(entries) {
+        var jsonEntryList = [],
+            entry,
+            entryI;
+
+        for (entryI = 0; entryI < entries.length; entryI++) {
+            entry = entries[entryI];
+            
+            if (_shouldShowInTree(entry)) {
+                var jsonEntry = {
+                    data: entry.name,
+                    attr: { id: "node" + _projectInitialLoad.id++ },
+                    metadata: { entry: entry }
+                };
+                if (entry.isDirectory) {
+                    jsonEntry.children = [];
+                    jsonEntry.state = "closed";
+                }
+    
+                // For more info on jsTree's JSON format see: http://www.jstree.com/documentation/json_data
+                jsonEntryList.push(jsonEntry);
+    
+                // Map path to ID to initialize loaded and opened states
+                _projectInitialLoad.fullPathToIdMap[entry.fullPath] = jsonEntry.attr.id;
+            }
+        }
+        return jsonEntryList;
+    }
+
+    /**
+     * @private
+     * Called by jsTree when the user has expanded a node that has never been expanded before. We call
+     * jsTree back asynchronously with the node's immediate children data once the subfolder is done
+     * being fetched.
+     *
+     * @param {jQueryObject} treeNode  jQ object for the DOM node being expanded
+     * @param {function(Array)} jsTreeCallback  jsTree callback to provide children to
+     */
+    function _treeDataProvider(treeNode, jsTreeCallback) {
+        var dirEntry;
+
+        if (treeNode === -1) {
+            // Special case: root of tree
+            dirEntry = _projectRoot;
+        } else {
+            // All other nodes: the DirectoryEntry is saved as jQ data in the tree (by _convertEntriesToJSON())
+            dirEntry = treeNode.data("entry");
+        }
+
+        // Fetch dirEntry's contents
+        dirEntry.createReader().readEntries(
+            function (entries) {
+                var subtreeJSON = _convertEntriesToJSON(entries);
+                
+                //If the list is empty, add an empty object so the loading message goes away
+                if (subtreeJSON.length === 0) {
+                    subtreeJSON.push({});
+                }
+                
+                jsTreeCallback(subtreeJSON);
+            },
+            function (error) {
+                brackets.showModalDialog(
+                    brackets.DIALOG_ID_ERROR,
+                    Strings.ERROR_LOADING_PROJECT,
+                    Strings.format(Strings.READ_DIRECTORY_ENTRIES_ERROR, dirEntry.fullPath, error.code)
+                );
+            }
+        );
+
+    }
+    
     /**
      * Loads the given folder as a project. Normally, you would call openProject() instead to let the
      * user choose a folder.
@@ -206,13 +353,13 @@ define(function(require, exports, module) {
         // reset tree node id's
         _projectInitialLoad.id = 0;
 
-        var prefs = PreferencesManager.getPreferences(PREFERENCES_CLIENT_ID)
-        ,   result = new $.Deferred()
-        ,   resultRenderTree
-        ,   isFirstProjectOpen = false;
+        var prefs = PreferencesManager.getPreferences(PREFERENCES_CLIENT_ID),
+            result = new $.Deferred(),
+            resultRenderTree,
+            isFirstProjectOpen = false;
 
-	if (brackets.inBrowser) {
-	    rootPath = "/";  // TODO: Do something better than this hack
+	if (brackets.inBrowser) { // TODO: [JRB] Do something better than this hack
+	    rootPath = "/";
 	    isFirstProjectOpen = true;
 	}
 
@@ -224,45 +371,24 @@ define(function(require, exports, module) {
             // TODO (jasonsj): handle missing paths, see issue #100
             _projectInitialLoad.previous = prefs.projectTreeState;
 
-            if (brackets.inBrowser && false) {
+            if (brackets.inBrowser && false) { // TODO: [JRB] Do something better than this hack
                 // In browser: dummy folder tree (hardcoded in ProjectManager)
-               rootPath = "DummyProject";
+                rootPath = "DummyProject";
             }
         }
 
         // Set title
         var projectName = rootPath.substring(rootPath.lastIndexOf("/") + 1);
-	if (projectName === "") {
+	if (projectName === "") { // TODO: [JRB] Do something better than this hack
 	    projectName = "ROOT!"
 	}
         $("#project-title").html(projectName);
 
-        // Populate file tree
-        if (brackets.inBrowser && false) {
-            // Hardcoded dummy data for local testing, in jsTree JSON format
-            // (we leave _projectRoot null)
-            var subfolderInner = { data:"Folder_inner", children:[
-                { data: "subsubfile_1" }, { data: "subsubfile_2" }
-            ] };
-            var treeJSONData = [
-                { data: "Dummy tree content:" },
-                { data:"Folder_1", children:[
-                    { data: "subfile_1" }, { data: "subfile_2" }, { data: "subfile_3" }
-                ] },
-                { data:"Folder_2", children:[
-                    { data: "subfile_4" }, subfolderInner, { data: "subfile_5" }
-                ] },
-                { data: "file_1" },
-                { data: "file_2" }
-            ];
-
-            // Show file list in UI
-            resultRenderTree = _renderTree(treeJSONData, result);
-
-        } else {
+        // Populate file tree as long as we aren't running in the browser
+        if (!brackets.inBrowser && false) { // TODO: [JRB] Do something better than this hack
             // Point at a real folder structure on local disk
             NativeFileSystem.requestNativeFileSystem(rootPath,
-                function(rootEntry) {
+                function (rootEntry) {
                     // Success!
                     _projectRoot = rootEntry;
 
@@ -271,34 +397,64 @@ define(function(require, exports, module) {
                     // immediate children, and so on.
                     resultRenderTree = _renderTree(_treeDataProvider);
 
-		    // BUG: This code was originally outside of the closure, which meant that 
-		    // "done" could have been assigned to an "undefined" object
-		    // This might not be the right place either because the inBrowser case needs it
-		    resultRenderTree.done(function () {
-			console.log("done called");
-			result.resolve();
+                    resultRenderTree.done(function () {
+                        result.resolve();
 
-			if (isFirstProjectOpen) {
-			    $(exports).triggerHandler("initializeComplete", _projectRoot);
-			}
-		    });
-		    resultRenderTree.fail(function () {
-			result.reject();
-		    });
+                        if (isFirstProjectOpen) {
+                            $(exports).triggerHandler("initializeComplete", _projectRoot);
+                        }
+                    });
+                    resultRenderTree.fail(function () {
+                        result.reject();
+                    });
                 },
-                function(error) {
+                function (error) {
                     brackets.showModalDialog(
-                          brackets.DIALOG_ID_ERROR
-                        , Strings.ERROR_LOADING_PROJECT
-                        , Strings.format(Strings.REQUEST_NATIVE_FILE_SYSTEM_ERROR, rootPath, error.code
-                        , function() { result.reject(); })
+                        brackets.DIALOG_ID_ERROR,
+                        Strings.ERROR_LOADING_PROJECT,
+                        Strings.format(Strings.REQUEST_NATIVE_FILE_SYSTEM_ERROR, rootPath, error.code,
+                            function () { result.reject(); }
+                            )
                     );
                 }
-            );
+                );
         }
 
-
         return result;
+    }
+
+    /**
+     * Displays a browser dialog where the user can choose a folder to load.
+     * (If the user cancels the dialog, nothing more happens).
+     */
+    function openProject() {
+        // Confirm any unsaved changes first. We run the command in "prompt-only" mode, meaning it won't
+        // actually close any documents even on success; we'll do that manually after the user also oks
+        //the folder-browse dialog.
+        CommandManager.execute(Commands.FILE_CLOSE_ALL, { promptOnly: true })
+            .done(function () {
+                // Pop up a folder browse dialog
+                NativeFileSystem.showOpenDialog(false, true, "Choose a folder", null, null,
+                    function (files) {
+                        // If length == 0, user canceled the dialog; length should never be > 1
+                        if (files.length > 0) {
+                            // Actually close all the old files now that we know for sure we're proceeding
+                            DocumentManager.closeAll();
+                            
+                            // Load the new project into the folder tree
+                            loadProject(files[0]);
+                        }
+                    },
+                    function (error) {
+                        brackets.showModalDialog(
+                            brackets.DIALOG_ID_ERROR,
+                            Strings.ERROR_LOADING_PROJECT,
+                            Strings.format(Strings.OPEN_DIALOG_ERROR, error.code)
+                        );
+                    }
+                    );
+            });
+        // if fail, don't open new project: user canceled (or we failed to save its unsaved changes)
     }
 
     /**
@@ -309,8 +465,9 @@ define(function(require, exports, module) {
      */
     function getSelectedItem() {
         var selected = _projectTree.jstree("get_selected");
-        if (selected)
+        if (selected) {
             return selected.data("entry");
+        }
         return null;
     }
 
@@ -336,19 +493,19 @@ define(function(require, exports, module) {
             result = new $.Deferred();
 
         // get the FileEntry or DirectoryEntry
-        if ( selection ) {
-            selectionEntry = selection.data("entry")
+        if (selection) {
+            selectionEntry = selection.data("entry");
         }
 
         // move selection to parent DirectoryEntry
-        if ( selectionEntry && selectionEntry.isFile ) {
+        if (selectionEntry && selectionEntry.isFile) {
             position = "after";
 
             // FIXME (jasonsj): get_parent returns the tree instead of the directory?
             /*
             selection = _projectTree.jstree("get_parent", selection);
 
-            if ( typeof( selection.data ) == "function" ) {
+            if (typeof(selection.data) == "function") {
                 // get Entry from tree node
                 // note that the jstree root will return undefined
                 selectionEntry = selection.data("entry");
@@ -364,11 +521,11 @@ define(function(require, exports, module) {
         }
 
         // use the project root DirectoryEntry
-        if ( !selectionEntry ) {
+        if (!selectionEntry) {
             selectionEntry = getProjectRoot();
         }
 
-        _projectTree.on("create.jstree", function(event, data) {
+        _projectTree.on("create.jstree", function (event, data) {
             $(event.target).off("create.jstree");
 
             function errorCleanup() {
@@ -383,54 +540,51 @@ define(function(require, exports, module) {
                 // TODO: There are some filenames like COM1, LPT3, etc. that are not valid on Windows.
                 // We may want to add checks for those here.
                 // See http://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx
-                if (data.rslt.name.search(/[/?*:;{}<>\\|]+/) !== -1) {
+                if (data.rslt.name.search(/[\/?*:;\{\}<>\\|]+/) !== -1) {
                     brackets.showModalDialog(
-                            brackets.DIALOG_ID_ERROR
-                        ,   Strings.INVALID_FILENAME_TITLE
-                        ,   Strings.INVALID_FILENAME_MESSAGE);
+                        brackets.DIALOG_ID_ERROR,
+                        Strings.INVALID_FILENAME_TITLE,
+                        Strings.INVALID_FILENAME_MESSAGE
+                    );
 
                     errorCleanup();
                     return;
                 }
 
                 // Use getFile() to create the new file
-                selectionEntry.getFile(data.rslt.name
-                    , {create: true, exclusive: true}
-                    , function( entry ) {
+                selectionEntry.getFile(
+                    data.rslt.name,
+                    {create: true, exclusive: true},
+                    function (entry) {
                         data.rslt.obj.data("entry", entry);
                         _projectTree.jstree("select_node", data.rslt.obj, true);
                         result.resolve(entry);
-                    }
-                    , function ( error ) {
-                        if ( ( error.code === FileError.PATH_EXISTS_ERR )
-                             || (error.code === FileError.TYPE_MISMATCH_ERR ) ) {
+                    },
+                    function (error) {
+                        if ((error.code === FileError.PATH_EXISTS_ERR)
+                                || (error.code === FileError.TYPE_MISMATCH_ERR)) {
                             brackets.showModalDialog(
-                                  brackets.DIALOG_ID_ERROR
-                                , Strings.INVALID_FILENAME_TITLE
-                                , Strings.format(
-                                      Strings.FILE_ALREADY_EXISTS
-                                    , data.rslt.name
-                                )
+                                brackets.DIALOG_ID_ERROR,
+                                Strings.INVALID_FILENAME_TITLE,
+                                Strings.format(Strings.FILE_ALREADY_EXISTS, data.rslt.name)
                             );
-                        }
-                        else {
-                            var errString = error.code == FileError.NO_MODIFICATION_ALLOWED_ERR ? 
+                        } else {
+                            var errString = error.code === FileError.NO_MODIFICATION_ALLOWED_ERR ?
                                              Strings.NO_MODIFICATION_ALLOWED_ERR :
-                                             Strings.format(String.GENERIC_ERROR, error.code)
+                                             Strings.format(String.GENERIC_ERROR, error.code);
                             var errMsg = Strings.format(Strings.ERROR_CREATING_FILE, data.rslt.name, errString);
                           
                             brackets.showModalDialog(
-                                  brackets.DIALOG_ID_ERROR
-                                , Strings.ERROR_CREATING_FILE_TITLE
-                                , errMsg
+                                brackets.DIALOG_ID_ERROR,
+                                Strings.ERROR_CREATING_FILE_TITLE,
+                                errMsg
                             );
                         }
 
                         errorCleanup();
                     }
                 );
-            }
-            else { //escapeKeyPressed
+            } else { //escapeKeyPressed
                 errorCleanup();
             }
         });
@@ -440,175 +594,19 @@ define(function(require, exports, module) {
 
         var renameInput = _projectTree.find(".jstree-rename-input");
 
-        renameInput.on("keydown", function(event) {
+        renameInput.on("keydown", function (event) {
             // Listen for escape key on keydown, so we can remove the node in the create.jstree handler above
-            if (event.keyCode == 27) {
+            if (event.keyCode === 27) {
                 escapeKeyPressed = true;
             }
         });
 
         // TODO: Figure out better way to style this input. All styles are inlined by jsTree...
-        renameInput.css(
-            { left: "17px"
-            , height: "24px"
-            }
-        ).parent().css(
-            { height: "26px"
-            }
-        );
+        renameInput.css({ left: "17px", height: "24px"})
+            .parent().css({ height: "26px"});
 
         return result;
     }
-
-    /**
-     * @private
-     * Called by jsTree when the user has expanded a node that has never been expanded before. We call
-     * jsTree back asynchronously with the node's immediate children data once the subfolder is done
-     * being fetched.
-     *
-     * @param {jQueryObject} treeNode  jQ object for the DOM node being expanded
-     * @param {function(Array)} jsTreeCallback  jsTree callback to provide children to
-     */
-    function _treeDataProvider(treeNode, jsTreeCallback) {
-        var dirEntry;
-
-        if (treeNode == -1) {
-            // Special case: root of tree
-            dirEntry = _projectRoot;
-        } else {
-            // All other nodes: the DirectoryEntry is saved as jQ data in the tree (by _convertEntriesToJSON())
-            dirEntry = treeNode.data("entry");
-        }
-
-        // Fetch dirEntry's contents
-        dirEntry.createReader().readEntries(
-            function(entries) {
-                var subtreeJSON = _convertEntriesToJSON(entries);
-                //If the list is empty, add an empty object so the loading message goes away
-                if( subtreeJSON.length === 0 )
-                    subtreeJSON.push({});
-                jsTreeCallback(subtreeJSON);
-            },
-            function(error) {
-                brackets.showModalDialog(
-                      brackets.DIALOG_ID_ERROR
-                    , Strings.ERROR_LOADING_PROJECT
-                    , Strings.format(Strings.READ_DIRECTORY_ENTRIES_ERROR, dirEntry.fullPath, error.code)
-                );
-            }
-        );
-
-    }
-
-    /**
-     * @private
-     * Given an array of NativeFileSystem entries, returns a JSON array representing them in the format
-     * required by jsTree. Saves the corresponding Entry object as metadata (which jsTree will store in
-     * the DOM via $.data()).
-     *
-     * Does NOT recursively traverse the file system: folders are marked as expandable but are given no
-     * children initially.
-     *
-     * @param {Array.<Entry>} entries  Array of NativeFileSystem entry objects.
-     * @return {Array} jsTree node data: array of JSON objects
-     */
-    function _convertEntriesToJSON(entries) {
-        var jsonEntryList = []
-        ,   entry;
-
-        for (var entryI in entries) {
-            entry = entries[entryI];
-
-            var jsonEntry = {
-                data: entry.name,
-                attr: { id: "node" + _projectInitialLoad.id++ },
-                metadata: { entry: entry }
-            };
-            if (entry.isDirectory) {
-                jsonEntry.children = [];
-                jsonEntry.state = "closed";
-            }
-
-            // For more info on jsTree's JSON format see: http://www.jstree.com/documentation/json_data
-            jsonEntryList.push(jsonEntry);
-
-            // Map path to ID to initialize loaded and opened states
-            _projectInitialLoad.fullPathToIdMap[entry.fullPath] = jsonEntry.attr.id;
-        }
-        return jsonEntryList;
-    }
-
-
-    /**
-     * @private
-     * Given an input to jsTree's json_data.data setting, display the data in the file tree UI
-     * (replacing any existing file tree that was previously displayed). This input could be
-     * raw JSON data, or it could be a dataprovider function. See jsTree docs for details:
-     * http://www.jstree.com/documentation/json_data
-     */
-    function _renderTree(treeDataProvider) {
-        var projectTreeContainer = $("#project-files-container")
-        ,   result = new $.Deferred();
-
-        // Instantiate tree widget
-        // (jsTree is smart enough to replace the old tree if there's already one there)
-        _projectTree = projectTreeContainer.jstree({
-            plugins : ["ui", "themes", "json_data", "crrm"],
-            json_data : { data:treeDataProvider, correct_state: false },
-            core : { animation:0 },
-            themes : { theme:"brackets", url:"styles/jsTreeTheme.css", dots:false, icons:false },
-                //(note: our actual jsTree theme CSS lives in brackets.less; we specify an empty .css
-                // file because jsTree insists on loading one itself)
-
-            strings : { loading : "Loading ...", new_node : "New node" }    // TODO: localization
-        })
-        .bind("select_node.jstree", function(event, data) {
-            var entry = data.rslt.obj.data("entry");
-            if (entry.isFile)
-                FileViewController.openAndSelectDocument(entry.fullPath, "ProjectManager");
-        })
-        .bind("reopen.jstree", function(event, data) {
-            // This handler fires for the initial load and subsequent
-            // reload_nodes events. For each depth level of the tree, we open
-            // the saved nodes by a fullPath lookup.
-            if ( _projectInitialLoad.previous.length > 0 ) {
-                // load previously open nodes by increasing depth
-                var toOpenPaths = _projectInitialLoad.previous.shift()
-                ,   toOpenIds   = [];
-
-                // use path to lookup ID
-                $.each( toOpenPaths, function(index, value) {
-                    toOpenIds.push(_projectInitialLoad.fullPathToIdMap[value]);
-                });
-
-                // specify nodes to open and load
-                data.inst.data.core.to_open = toOpenIds;
-                _projectTree.jstree("reload_nodes", false);
-            }
-            if ( _projectInitialLoad.previous.length === 0 ) {
-                result.resolve();
-            }
-        })
-
-        // jstree has a default event handler for dblclick that attempts to clear the
-        // global window selection (presumably because it doesn't want text within the tree
-        // to be selected). This ends up messing up CodeMirror, and we don't need this anyway
-        // since we've turned off user selection of UI text globally. So we just unbind it,
-        // and add our own double-click handler here.
-        // Filed this bug against jstree at https://github.com/vakata/jstree/issues/163
-        _projectTree.bind("init.jstree", function() {
-            _projectTree
-                .unbind("dblclick.jstree")
-                .bind("dblclick.jstree", function(event) {
-                    var entry = $(event.target).closest("li").data("entry");
-                    if (entry.isFile){
-                        FileViewController.addToWorkingSetAndSelect(entry.fullPath);
-                    }
-                });
-        });
-        
-        return result;
-    };
 
     // Define public API
     exports.getProjectRoot  = getProjectRoot;
@@ -620,13 +618,21 @@ define(function(require, exports, module) {
     exports.createNewItem   = createNewItem;
 
     // Initialize now
-    (function() {
+    (function () {
         var loadedPath = window.location.pathname;
         var bracketsSrc = loadedPath.substr(0, loadedPath.lastIndexOf("/"));
-        var defaults =
-            { projectPath:      bracketsSrc /* initialze to brackets source */
-            , projectTreeState: ""          /* TODO (jasonsj): jstree state */
-            };
+        
+        // On Windows, when loading from a file, window.location.pathname has
+        // a leading '/'. Remove that here.
+        // TODO: Figure out a better way to handle this...
+        if (bracketsSrc[0] === '/' && bracketsSrc[2] === ":") {
+            bracketsSrc = bracketsSrc.substr(1);
+        }
+        
+        var defaults = {
+            projectPath:      bracketsSrc, /* initialze to brackets source */
+            projectTreeState: ""           /* TODO (jasonsj): jstree state */
+        };
         PreferencesManager.addPreferencesClient(PREFERENCES_CLIENT_ID, _savePreferences, this, defaults);
-    })();
+    }());
 });
