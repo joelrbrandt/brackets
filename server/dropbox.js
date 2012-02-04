@@ -1,3 +1,4 @@
+var util = require('util');
 var qs = require('querystring');
 var dbox = require('dbox');
 var config = require('./config');
@@ -12,7 +13,6 @@ function getApiCallOpts(req, res) {
 		oauth_token_secret: req.session.access_token_secret};
     } else {
 	console.log('user not logged in, redirecting...');
-	res.redirect('/auth/login');
 	return false;
     }
 }
@@ -59,29 +59,9 @@ function callback(req, res) {
 	    console.log('got an access token');
 	    req.session.access_token = reply.oauth_token;
 	    req.session.access_token_secret = reply.oauth_token_secret;
-	    res.redirect('/test'); // TODO: change this to redirect to root
+	    res.redirect('/');
 	} else {
 	    throw("couldn't get access token from dropbox");
-	}
-    });
-}
-
-function test(req, res) {
-    console.log('in test');
-    var options = getApiCallOpts(req, res);
-    if (!options) {
-	res.redirect('/auth/login');
-    }
-    client.metadata('/', options, function(status, reply) {
-	if (status === 200) {
-	    res.end(reply);
-	}
-	else if (status === 401) { // token expired
-	    req.session.destroy();
-	    res.redirect('/auth/login');
-	}
-	else {
-	    throw("couldn't access dropbox -- status: " + status + " reply: " + JSON.stringify(reply));
 	}
     });
 }
@@ -148,7 +128,6 @@ function configureFileSystemRoutes(app) {
 	});
     });
 
-
     app.get('/fs/readfile', function readfile(req, res) {
 	// TODO: We should get metadata first to make sure this is a reasonably sized file
 	console.log('in readfile');
@@ -198,12 +177,89 @@ function configureFileSystemRoutes(app) {
 	});
     });
 
+}
 
+function configureServingRoutes(app) {
+    app.get('/serve/*', function readfile(req, res) {
+	console.log('in serve');
+	var options = getApiCallOpts(req, res);
+	if (!options) {
+	    respondNotLoggedIn(req, res);
+	}
+	var path = req.path;
+	path = path.substr("/serve".length);
+	console.log("serving " + path);
+
+	client.metadata(path, options, function(status, reply) {
+	    if (status === 200) {
+		var m = JSON.parse(reply);
+		if (m.is_dir === false) {
+		    if (m.mime_type !== undefined) {
+			res.header("Content-Type", m.mime_type);
+		    }
+
+		    if (m.bytes !== undefined) {
+			res.header("Content-Length", m.bytes);
+		    }
+
+		    client.get(path, options, function(status, reply) {
+			if (status === 200) {
+			    res.end(reply);
+			}
+			else if (status === 401) { // token expired
+			    respondNotLoggedIn(req, res);
+			}
+			else {
+			    res.statusCode = status;
+			    res.end(reply);
+			}
+		    });
+		}
+	    }
+	    else if (status === 401) { // token expired
+		respondNotLoggedIn(req, res);
+	    }
+	    else {
+		res.statusCode = status;
+		res.end(reply);
+	    }
+	});
+
+
+    });
+
+
+    app.get('/metadata/*', function readfile(req, res) {
+	console.log('in metadata');
+	var options = getApiCallOpts(req, res);
+	if (!options) {
+	    respondNotLoggedIn(req, res);
+	}
+	var path = req.path;
+	path = path.substr("/metadata".length);
+	console.log("metadata-ing " + path);
+
+	client.metadata(path, options, function(status, reply) {
+	    if (status === 200) {
+		res.header("Content-Type", "text/plain");
+		res.end(util.inspect(JSON.parse(reply), false, 10, false));
+	    }
+	    else if (status === 401) { // token expired
+		respondNotLoggedIn(req, res);
+	    }
+	    else {
+		res.statusCode = status;
+		res.end(reply);
+	    }
+	});
+
+
+    });
 
 }
 
 exports.login = login;
 exports.logout = logout;
 exports.callback = callback;
-exports.test = test;
 exports.configureFileSystemRoutes = configureFileSystemRoutes;
+exports.configureServingRoutes = configureServingRoutes;

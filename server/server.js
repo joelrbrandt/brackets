@@ -61,11 +61,8 @@ function configureRoutes(app) {
 	dropbox.callback(req, res);
     });
 
-    app.get('/test', function(req, res) {
-	dropbox.test(req, res);
-    });
-
     dropbox.configureFileSystemRoutes(app);
+    dropbox.configureServingRoutes(app);
     
 }
 
