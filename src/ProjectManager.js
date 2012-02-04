@@ -385,7 +385,7 @@ define(function (require, exports, module) {
         $("#project-title").html(projectName);
 
         // Populate file tree as long as we aren't running in the browser
-        if (!brackets.inBrowser && false) { // TODO: [JRB] Do something better than this hack
+        if (brackets.fs) { // TODO: [JRB] Do something better than this hack
             // Point at a real folder structure on local disk
             NativeFileSystem.requestNativeFileSystem(rootPath,
                 function (rootEntry) {
