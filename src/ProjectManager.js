@@ -358,6 +358,11 @@ define(function (require, exports, module) {
             resultRenderTree,
             isFirstProjectOpen = false;
 
+	if (brackets.inBrowser) { // TODO: [JRB] Do something better than this hack
+	    rootPath = "/";
+	    isFirstProjectOpen = true;
+	}
+
         if (rootPath === null || rootPath === undefined) {
             // Load the last known project into the tree
             rootPath = prefs.projectPath;
@@ -366,7 +371,7 @@ define(function (require, exports, module) {
             // TODO (jasonsj): handle missing paths, see issue #100
             _projectInitialLoad.previous = prefs.projectTreeState;
 
-            if (brackets.inBrowser) {
+            if (brackets.inBrowser && false) { // TODO: [JRB] Do something better than this hack
                 // In browser: dummy folder tree (hardcoded in ProjectManager)
                 rootPath = "DummyProject";
             }
@@ -374,10 +379,13 @@ define(function (require, exports, module) {
 
         // Set title
         var projectName = rootPath.substring(rootPath.lastIndexOf("/") + 1);
+	if (projectName === "") { // TODO: [JRB] Do something better than this hack
+	    projectName = "ROOT!"
+	}
         $("#project-title").html(projectName);
 
         // Populate file tree as long as we aren't running in the browser
-        if (!brackets.inBrowser) {
+        if (brackets.fs) { // TODO: [JRB] Do something better than this hack
             // Point at a real folder structure on local disk
             NativeFileSystem.requestNativeFileSystem(rootPath,
                 function (rootEntry) {
