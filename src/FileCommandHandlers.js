@@ -128,7 +128,7 @@ define(function (require, exports, module) {
                 _defaultOpenDialogFullPath = ProjectManager.getProjectRoot().fullPath;
             }
             // Prompt the user with a dialog
-            // TODO: we're relying on this to not be asynchronous--is that safe?
+            // TODO (issue #117): we're relying on this to not be asynchronous--is that safe?
             NativeFileSystem.showOpenDialog(false, false, Strings.OPEN_FILE, _defaultOpenDialogFullPath,
                 ["htm", "html", "js", "css"], function (files) {
                     if (files.length > 0) {
@@ -267,7 +267,7 @@ define(function (require, exports, module) {
                         result.reject(error);
                     };
 
-                    // TODO (jasonsj): Blob instead of string
+                    // TODO (issue #241): Blob instead of string
                     writer.write(docToSave.getText());
                 },
                 function (error) {
@@ -498,24 +498,30 @@ define(function (require, exports, module) {
             .done(function () {
                 _windowGoingAway = true;
                 PreferencesManager.savePreferences();
-            })
-            .done(postCloseHandler);
+                postCloseHandler();
+            });
     }
     
     /** Confirms any unsaved changes, then closes the window */
     function handleFileCloseWindow(commandData) {
-        return _handleWindowGoingAway(commandData, window.close);
+        return _handleWindowGoingAway(commandData, function () {
+            window.close();
+        });
     }
     
     /** Closes the window, then quits the app */
     function handleFileQuit(commandData) {
-        return _handleWindowGoingAway(commandData, brackets.app.quit);
+        return _handleWindowGoingAway(commandData, function () {
+            brackets.app.quit();
+        });
         // if fail, don't exit: user canceled (or asked us to save changes first, but we failed to do so)
     }
     
      /** Does a full reload of the browser window */
     function handleFileReload(commandData) {
-        return _handleWindowGoingAway(commandData, window.location.reload);
+        return _handleWindowGoingAway(commandData, function () {
+            window.location.reload();
+        });
     }
 
     function init(title) {
