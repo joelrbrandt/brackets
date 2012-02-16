@@ -349,7 +349,7 @@ define(function (require, exports, module) {
                 return edge;
             }
         }
-        return new Edge(); // didn't find it, so return a new edge with start_node = -1
+        return null; // didn't find it
     };
 
     /***
@@ -467,12 +467,19 @@ define(function (require, exports, module) {
     Suffix.prototype.canonize = function () {
         if (!this.explicit()) {
             var edge = findEdge(this.origin_node, text[this.first_char_index]);
+            console.log("Canonize this: " + JSON.stringify(this) + " first_char_index: " + this.first_char_index + " edge: " + JSON.stringify(edge));
+            if (!edge) {
+                throw new Error("expected to find an edge, but didn't");
+            }
             var edge_span = edge.last_char_index - edge.first_char_index;
             while (edge_span <= (this.last_char_index - this.first_char_index)) {
                 this.first_char_index = this.first_char_index + edge_span + 1;
                 this.origin_node = edge.end_node;
                 if (this.first_char_index <= this.last_char_index) {
                     edge = findEdge(edge.end_node, text[this.first_char_index]);
+                    if (!edge) {
+                        throw new Error("expected to find an edge, but didn't");
+                    }
                     edge_span = edge.last_char_index - edge.first_char_index;
                 }
             }
@@ -537,11 +544,14 @@ define(function (require, exports, module) {
 
             if (active.explicit()) {
                 edge = findEdge(active.origin_node, text[last_char_index]);
-                if (edge.start_node !== -1) {
+                if (edge) {
                     break;
                 }
             } else { // implicit node, a little more complicated
                 edge = findEdge(active.origin_node, text[active.first_char_index]);
+                if (!edge) {
+                    throw new Error("expected to find an edge, but didn't");
+                }
                 var span = active.last_char_index - active.first_char_index;
                 if (text[edge.first_char_index + span + 1] === text[last_char_index]) {
                     break;
@@ -588,7 +598,7 @@ define(function (require, exports, module) {
             if (active.origin_node === 0) {
                 active.first_char_index++;
             } else {
-                if (!nodes[active.origin_node]) {
+                if (nodes[active.origin_node] === undefined || nodes[active.origin_node] === null) {
                     nodes[active.origin_node] = -1;
                 }
                 active.origin_node = nodes[active.origin_node];
