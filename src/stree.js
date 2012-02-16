@@ -664,7 +664,7 @@ define(function (require, exports, module) {
         }
         console.log("dumping edges...");
         dumpEdges();
-        return edges;
+        return {suffix: active, nodes: nodes, edges: edges};
     };
 
     exports.test = test;
