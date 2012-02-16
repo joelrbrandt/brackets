@@ -62,10 +62,10 @@ define(function (require, exports, module) {
         }
 
         if (indentAuto) {
-            var currentWS = line.search(/\S/);
+            var currentLength = line.length;
             CodeMirror.commands.indentAuto(instance);
             // If the amount of whitespace didn't change, insert another tab
-            if (instance.getLine(from.line).search(/\S/) === currentWS) {
+            if (instance.getLine(from.line).length === currentLength) {
                 insertTab = true;
                 to.ch = 0;
             }
@@ -81,7 +81,7 @@ define(function (require, exports, module) {
             } else {
                 var i, ins = "", numSpaces = instance.getOption("tabSize");
                 numSpaces -= to.ch % numSpaces;
-                for (i = 0; i < numSpaces + 1; i++) {
+                for (i = 0; i < numSpaces; i++) {
                     ins += " ";
                 }
                 instance.replaceSelection(ins, "end");
@@ -149,8 +149,9 @@ define(function (require, exports, module) {
      * Creates a new CodeMirror editor instance containing text from the 
      * specified fileEntry. The editor is not yet visible.
      * @param {!FileEntry} file  The file being edited. Need not lie within the project.
-     * @return {Deferred} a jQuery Deferred that will be resolved with the new editor and
-     *      the file's timestamp at the time it was read, or rejected if the file cannot be read.
+     * @return {Deferred} a jQuery Deferred that will be resolved with (the new editor, the file's
+     *      timestamp at the time it was read, the original text as read off disk); or rejected if
+     *      the file cannot be read.
      */
     function _createEditor(fileEntry) {
         var result = new $.Deferred(),
@@ -160,6 +161,7 @@ define(function (require, exports, module) {
             // NOTE: CodeMirror doesn't actually require calling 'new',
             // but jslint does require it because of the capital 'C'
             var editor = new CodeMirror(_editorHolder.get(0), {
+                electricChars: false,
                 indentUnit : 4,
                 lineNumbers: true,
                 extraKeys: {
@@ -189,29 +191,27 @@ define(function (require, exports, module) {
                     "Ctrl-H": "replace",
                     "Shift-Delete": "cut"
                 },
-                onChange: function onChange(editor, change) {
-                    $(exports).trigger("onChange", {editor: editor, change: change});
-                },
-                onCursorActivity: function onCursorActivity(editor) {
-                    $(exports).trigger("onCursorActivity", {editor: editor});
-                },
-                onGutterClick: function onGutterClick(editor, lineNumber) {
-                    $(exports).trigger("onGutterClick", {editor: editor, lineNumber: lineNumber});
-                },
-                onFocus: function onFocus(editor) {
-                    $(exports).trigger("onFocus", {editor: editor});
-                },
-                onBlur: function onBlur(editor) {
-                    $(exports).trigger("onBlur", {editor: editor});
-                },
-                onScroll: function onScroll(editor) {
-                    $(exports).trigger("onScroll", {editor: editor});
-                },
-                onHighlightComplete: function onHighlightComplete(editor) {
-                    $(exports).trigger("onHighlightComplete", {editor: editor});
-                },
-                onUpdate: function onUpdate(editor) {
-                    $(exports).trigger("onUpdate", {editor: editor});
+                onKeyEvent: function (instance, event) {
+                    if (event.type === "keypress") {
+                        var keyStr = String.fromCharCode(event.which || event.keyCode);
+                        if (/[\]\}\)]/.test(keyStr)) {
+                            // If the whole line is whitespace, auto-indent it
+                            var lineNum = instance.getCursor().line;
+                            var lineStr = instance.getLine(lineNum);
+                            
+                            if (!/\S/.test(lineStr)) {
+                                // Need to do the auto-indent on a timeout to ensure
+                                // the keypress is handled before auto-indenting.
+                                // This is the same timeout value used by the
+                                // electricChars feature in CodeMirror.
+                                setTimeout(function () {
+                                    instance.indentLine(lineNum);
+                                }, 75);
+                            }
+                        }
+                    }
+                    
+                    return false;
                 }
             });
             
@@ -225,7 +225,33 @@ define(function (require, exports, module) {
             // Make sure we can't undo back to the empty state before setValue()
             editor.clearHistory();
 
-            result.resolve(editor, readTimestamp);
+            // Attach the event handlers
+            editor.setOption("onChange", function onChange(editor, change) {
+                $(exports).trigger("onChange", {editor: editor, change: change});
+            });
+            editor.setOption("onCursorActivity", function onCursorActivity(editor) {
+                $(exports).trigger("onCursorActivity", {editor: editor});
+            });
+            editor.setOption("onGutterClick", function onGutterClick(editor, lineNumber) {
+                $(exports).trigger("onGutterClick", {editor: editor, lineNumber: lineNumber});
+            });
+            editor.setOption("onFocus", function onFocus(editor) {
+                $(exports).trigger("onFocus", {editor: editor});
+            });
+            editor.setOption("onBlur", function onBlur(editor) {
+                $(exports).trigger("onBlur", {editor: editor});
+            });
+            editor.setOption("onScroll", function onScroll(editor) {
+                $(exports).trigger("onScroll", {editor: editor});
+            });
+            editor.setOption("onHighlightComplete", function onHighlightComplete(editor) {
+                $(exports).trigger("onHighlightComplete", {editor: editor});
+            });
+            editor.setOption("onUpdate", function onUpdate(editor) {
+                $(exports).trigger("onUpdate", {editor: editor});
+            });
+
+            result.resolve(editor, readTimestamp, text);
         });
         reader.fail(function (error) {
             result.reject(error);
@@ -313,8 +339,8 @@ define(function (require, exports, module) {
         if (!document._editor) {
             var editorResult = _createEditor(document.file);
 
-            editorResult.done(function (editor, readTimestamp) {
-                document._setEditor(editor, readTimestamp);
+            editorResult.done(function (editor, readTimestamp, rawText) {
+                document._setEditor(editor, readTimestamp, rawText);
                 _doShow(document);
             });
             editorResult.fail(function (error) {
@@ -405,9 +431,10 @@ define(function (require, exports, module) {
         var result          = new $.Deferred(),
             editorResult    = _createEditor(fileEntry);
 
-        editorResult.done(function (editor, readTimestamp) {
+        editorResult.done(function (editor, readTimestamp, rawText) {
             // Create the Document wrapping editor & binding it to a file
-            var doc = new DocumentManager.Document(fileEntry, editor, readTimestamp);
+            var doc = new DocumentManager.Document(fileEntry);
+            doc._setEditor(editor, readTimestamp, rawText);
             result.resolve(doc);
         });
 
