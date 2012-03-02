@@ -467,7 +467,7 @@ define(function (require, exports, module) {
     Suffix.prototype.canonize = function () {
         if (!this.explicit()) {
             var edge = findEdge(this.origin_node, text[this.first_char_index]);
-            console.log("Canonize this: " + JSON.stringify(this) + " first_char_index: " + this.first_char_index + " edge: " + JSON.stringify(edge));
+            //console.log("Canonize this: " + JSON.stringify(this) + " first_char_index: " + this.first_char_index + " edge: " + JSON.stringify(edge));
             if (!edge) {
                 throw new Error("expected to find an edge, but didn't");
             }
@@ -655,15 +655,15 @@ define(function (require, exports, module) {
 
     var test = function (str) {
         var i;
-        console.log("testing with string " + str);
+        //console.log("testing with string " + str);
         text = str;
         text_length = text.length - 1;
         var active = new Suffix(0, 0, -1);
         for (i = 0; i <= text_length; i++) {
             addPrefix(active, i);
         }
-        console.log("dumping edges...");
-        dumpEdges();
+        //console.log("dumping edges...");
+        //dumpEdges();
         return {suffix: active, nodes: nodes, edges: edges};
     };
 

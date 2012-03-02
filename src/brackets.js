@@ -35,7 +35,8 @@ define(function (require, exports, module) {
         KeyBindingManager       = require("KeyBindingManager").KeyBindingManager,
         KeyMap                  = require("KeyBindingManager").KeyMap,
         Commands                = require("Commands"),
-        CommandManager          = require("CommandManager");
+        CommandManager          = require("CommandManager"),
+        Stree                   = require("stree");
 
     // Define core brackets namespace if it isn't already defined
     //
@@ -50,6 +51,7 @@ define(function (require, exports, module) {
     if (!global.brackets) {
         global.brackets = {};
     }
+    global.brackets.Stree = Stree;
     
     // TODO: (issue #265) Make sure the "test" object is not included in final builds
     // All modules that need to be tested from the context of the application
