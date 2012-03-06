@@ -35,7 +35,7 @@ define(function (require, exports, module) {
     var NativeFileSystem    = require("NativeFileSystem").NativeFileSystem,
         ProjectManager      = require("ProjectManager"),
         PreferencesManager  = require("PreferencesManager"),
-        EditorUtils         = require("EditorUtils"),
+        FileUtils           = require("FileUtils"),
         CommandManager      = require("CommandManager"),
         Async               = require("Async"),
         Commands            = require("Commands");
@@ -289,41 +289,6 @@ define(function (require, exports, module) {
     
     
     /**
-     * Asynchronously reads a file as UTF-8 encoded text.
-     * @return {Deferred} a jQuery Deferred that will be resolved with the 
-     *  file's text content plus its timestamp, or rejected with a FileError if
-     *  the file can not be read.
-     */
-    function readAsText(fileEntry) {
-        var result = new $.Deferred(),
-            reader = new NativeFileSystem.FileReader();
-
-        fileEntry.file(function (file) {
-            reader.onload = function (event) {
-                var text = event.target.result;
-                
-                fileEntry.getMetadata(
-                    function (metadata) {
-                        result.resolve(text, metadata.modificationTime);
-                    },
-                    function (error) {
-                        result.reject(error);
-                    }
-                );
-            };
-
-            reader.onerror = function (event) {
-                result.reject(event.target.error);
-            };
-
-            reader.readAsText(file, "utf8");
-        });
-
-        return result;
-    }
-    
-    
-    /**
      * @constructor
      * A single editable document, e.g. an entry in the working set list. Documents are unique per
      * file, so it IS safe to compare them with '==' or '==='.
@@ -370,11 +335,18 @@ define(function (require, exports, module) {
      * @type {?CodeMirror}
      */
     Document.prototype._editor = null;
-    
+
+    /**
+     * @private
+     * List of the open inline editors in this document
+     * @type [{!CodeMirror}]
+     */
+    Document.prototype._inlineEditors = [];
+
     /**
      * Null only of editor is not open yet. If a Document is created on empty text, or text with
      * inconsistent line endings, the Document defaults to the current platform's standard endings.
-     * @type {null|EditorUtils.LINE_ENDINGS_CRLF|EditorUtils.LINE_ENDINGS_LF}
+     * @type {null|FileUtils.LINE_ENDINGS_CRLF|FileUtils.LINE_ENDINGS_LF}
      */
     Document.prototype._lineEndings = null;
 
@@ -403,10 +375,44 @@ define(function (require, exports, module) {
         this.isDirty = false;
         
         // Sniff line-ending style
-        this._lineEndings = EditorUtils.sniffLineEndings(rawText);
+        this._lineEndings = FileUtils.sniffLineEndings(rawText);
         if (!this._lineEndings) {
-            this._lineEndings = EditorUtils.getPlatformLineEndings();
+            this._lineEndings = FileUtils.getPlatformLineEndings();
         }
+    };
+    
+    /**
+     * @private
+     * NOTE: this is actually "semi-private"; EditorManager also accesses this method. But no one
+     * other than DocumentManager and EditorManager should access it.
+     *
+     * Adds to the list of inline editors
+     * @param {!CodeMirror} inlineEditor
+     */
+    Document.prototype._addInlineEditor = function (inlineEditor) {
+        this._inlineEditors.push(inlineEditor);
+    };
+    
+    /**
+     * @private
+     * NOTE: this is actually "semi-private"; EditorManager also accesses this method. But no one
+     * other than DocumentManager and EditorManager should access it.
+     *
+     * Removes the inline editor from our list
+     * @param {!CodeMirror} inlineEditor
+     */
+    Document.prototype._removeInlineEditor = function (inlineEditor) {
+        var i = this._inlineEditors.indexOf(inlineEditor);
+        if (i >= 0) {
+            this._inlineEditors.splice(i, 1);
+        }
+    };
+    
+    /**
+     * @return [{!CodeMirror}] an array of inline editors
+     */
+    Document.prototype.getInlineEditors = function () {
+        return this._inlineEditors;
     };
     
     /**
@@ -418,7 +424,7 @@ define(function (require, exports, module) {
         // CodeMirror.getValue() always returns text with LF line endings; fix up to match line
         // endings preferred by the document, if necessary
         var codeMirrorText = this._editor.getValue();
-        if (this._lineEndings === EditorUtils.LINE_ENDINGS_LF) {
+        if (this._lineEndings === FileUtils.LINE_ENDINGS_LF) {
             return codeMirrorText;
         } else {
             return codeMirrorText.replace(/\n/g, "\r\n");
@@ -449,9 +455,9 @@ define(function (require, exports, module) {
         this.diskTimestamp = newTimestamp;
         
         // Re-sniff line-ending style too
-        this._lineEndings = EditorUtils.sniffLineEndings(text);
+        this._lineEndings = FileUtils.sniffLineEndings(text);
         if (!this._lineEndings) {
-            this._lineEndings = EditorUtils.getPlatformLineEndings();
+            this._lineEndings = FileUtils.getPlatformLineEndings();
         }
     };
     
@@ -626,7 +632,6 @@ define(function (require, exports, module) {
     exports.showInEditor = showInEditor;
     exports.addToWorkingSet = addToWorkingSet;
     exports.closeDocument = closeDocument;
-    exports.readAsText = readAsText;
     exports.closeAll = closeAll;
 
     // Register preferences callback
