@@ -3,7 +3,7 @@
  */
 
 /*jslint vars: true, plusplus: true, devel: true, browser: true, nomen: true, indent: 4, maxerr: 50 */
-/*global define: false, brackets: true, $: false, JSLINT: false, PathUtils: false */
+/*global define: false, brackets: true, $: false, PathUtils: false */
 
 /**
  * brackets is the root of the Brackets codebase. This file pulls in all other modules as
@@ -22,21 +22,38 @@ define(function (require, exports, module) {
     require("widgets/bootstrap-dropdown");
     require("widgets/bootstrap-modal");
     require("thirdparty/path-utils/path-utils.min");
-    require("thirdparty/jslint/jslint");
+    require("thirdparty/smart-auto-complete/jquery.smart_autocomplete");
+
+    // Load LiveDeveopment
+    require("LiveDevelopment/main");
     
     // Load dependent modules
-    var ProjectManager          = require("ProjectManager"),
-        DocumentManager         = require("DocumentManager"),
-        EditorManager           = require("EditorManager"),
-        WorkingSetView          = require("WorkingSetView"),
-        FileCommandHandlers     = require("FileCommandHandlers"),
-        FileViewController      = require("FileViewController"),
-        FileSyncManager         = require("FileSyncManager"),
-        KeyBindingManager       = require("KeyBindingManager").KeyBindingManager,
-        KeyMap                  = require("KeyBindingManager").KeyMap,
-        Commands                = require("Commands"),
-        CommandManager          = require("CommandManager"),
+    var ProjectManager          = require("project/ProjectManager"),
+        DocumentManager         = require("document/DocumentManager"),
+        EditorManager           = require("editor/EditorManager"),
+        CSSInlineEditor         = require("editor/CSSInlineEditor"),
+        WorkingSetView          = require("project/WorkingSetView"),
+        DocumentCommandHandlers = require("document/DocumentCommandHandlers"),
+        FileViewController      = require("project/FileViewController"),
+        FileSyncManager         = require("project/FileSyncManager"),
+        KeyBindingManager       = require("command/KeyBindingManager"),
+        KeyMap                  = require("command/KeyMap"),
+        Commands                = require("command/Commands"),
+        CommandManager          = require("command/CommandManager"),
+        CodeHintManager         = require("editor/CodeHintManager"),
+        PerfUtils               = require("utils/PerfUtils"),
+        FileIndexManager        = require("project/FileIndexManager"),
+        QuickFileOpen           = require("search/QuickFileOpen"),
+        Menus                   = require("command/Menus"),
+        FileUtils               = require("file/FileUtils"),
+        ExtensionLoader         = require("utils/ExtensionLoader"),
         Stree                   = require("stree");
+    
+    //Load modules the self-register and just need to get included in the main project
+    require("language/JSLintUtils");
+    require("editor/CodeHintManager");
+    require("debug/DebugCommandHandlers");
+    require("search/FindInFiles");
 
     // Define core brackets namespace if it isn't already defined
     //
@@ -59,164 +76,35 @@ define(function (require, exports, module) {
     // in the modules since they would run in context of the unit test window,
     // and would not have access to the app html/css.
     brackets.test = {
-        PreferencesManager      : require("PreferencesManager"),
+        PreferencesManager      : require("preferences/PreferencesManager"),
         ProjectManager          : ProjectManager,
-        FileCommandHandlers     : FileCommandHandlers,
+        DocumentCommandHandlers : DocumentCommandHandlers,
         FileViewController      : FileViewController,
         DocumentManager         : DocumentManager,
+        EditorManager           : EditorManager,
         Commands                : Commands,
         WorkingSetView          : WorkingSetView,
-        CommandManager          : require("CommandManager")
+        CommandManager          : require("command/CommandManager"),
+        FileSyncManager         : FileSyncManager,
+        FileIndexManager        : FileIndexManager,
+        CSSUtils                : require("language/CSSUtils")
     };
     
     // Uncomment the following line to force all low level file i/o routines to complete
     // asynchronously. This should only be done for testing/debugging.
     // NOTE: Make sure this line is commented out again before committing!
-    // brackets.forceAsyncCallbacks = true;
+    //brackets.forceAsyncCallbacks = true;
 
     // Load native shell when brackets is run in a native shell rather than the browser
     // TODO: (issue #266) load conditionally
-    brackets.shellAPI = require("ShellAPI");
+    brackets.shellAPI = require("utils/ShellAPI");
     
     brackets.inBrowser = !brackets.hasOwnProperty("fs");
     
-    brackets.isWin = (global.navigator.userAgent.indexOf("Windows") !== -1);
-    brackets.isMac = !brackets.isWin;
-    
-
-    brackets.DIALOG_BTN_CANCEL = "cancel";
-    brackets.DIALOG_BTN_OK = "ok";
-    brackets.DIALOG_BTN_DONTSAVE = "dontsave";
-    brackets.DIALOG_CANCELED = "_canceled";
-
-    brackets.DIALOG_ID_ERROR = "error-dialog";
-    brackets.DIALOG_ID_SAVE_CLOSE = "save-close-dialog";
-    brackets.DIALOG_ID_EXT_CHANGED = "ext-changed-dialog";
-    brackets.DIALOG_ID_EXT_DELETED = "ext-deleted-dialog";
-
-    /**
-     * General purpose modal dialog. Assumes that:
-     * -- the root tag of the dialog is marked with a unique class name (passed as dlgClass), as well as the
-     *    classes "template modal hide".
-     * -- the HTML for the dialog contains elements with "title" and "message" classes, as well as a number 
-     *    of elements with "dialog-button" class, each of which has a "data-button-id".
-     *
-     * @param {string} dlgClass The class of the dialog node in the HTML.
-     * @param {string} title The title of the error dialog. Can contain HTML markup.
-     * @param {string} message The message to display in the error dialog. Can contain HTML markup.
-     * @return {Deferred} a $.Deferred() that will be resolved with the ID of the clicked button when the dialog
-     *     is dismissed. Never rejected.
-     */
-    brackets.showModalDialog = function (dlgClass, title, message, callback) {
-        var result = $.Deferred();
-        
-        // We clone the HTML rather than using it directly so that if two dialogs of the same
-        // type happen to show up, they can appear at the same time. (This is an edge case that
-        // shouldn't happen often, but we can't prevent it from happening since everything is
-        // asynchronous.)
-        // TODO: (issue #258) In future, we should templatize the HTML for the dialogs rather than having 
-        // it live directly in the HTML.
-        var dlg = $("." + dlgClass + ".template")
-            .clone()
-            .removeClass("template")
-            .addClass("instance")
-            .appendTo(document.body);
-
-        // Set title and message
-        $(".dialog-title", dlg).html(title);
-        $(".dialog-message", dlg).html(message);
-
-        // Pipe dialog-closing notification back to client code
-        dlg.one("hidden", function () {
-            var buttonId = dlg.data("buttonId");
-            // Let call stack return before notifying that dialog has closed; this avoids issue #191
-            // if the handler we're triggering might show another dialog (as long as there's no
-            // fade-out animation)
-            setTimeout(function () {
-                result.resolve(buttonId);
-            }, 0);
-            
-            // Remove the dialog instance from the DOM.
-            dlg.remove();
-        });
-
-        function stopEvent(e) {
-            // Stop the event if the target is not inside the dialog
-            if (!($.contains(dlg.get(0), e.target))) {
-                e.stopPropagation();
-                e.preventDefault();
-            }
-        }
-        
-        // Enter/Return handler for the primary button. Need to
-        // add both keydown and keyup handlers here to make sure
-        // the enter key was pressed while the dialog was showing.
-        // Otherwise, if a keydown or keypress from somewhere else
-        // triggered an alert, the keyup could immediately dismiss it.
-        var enterKeyPressed = false;
-        
-        function keydownHandler(e) {
-            if (e.keyCode === 13) {
-                enterKeyPressed = true;
-            }
-            stopEvent(e);
-        }
-        
-        function keyupHandler(e) {
-            if (e.keyCode === 13 && enterKeyPressed) {
-                var primaryBtn = dlg.find(".primary");
-                if (primaryBtn) {
-                    brackets._dismissDialog(dlg, primaryBtn.attr("data-button-id"));
-                }
-            }
-            enterKeyPressed = false;
-            stopEvent(e);
-        }
-        
-        // These handlers are added at the capture phase to make sure we
-        // get first crack at the events. 
-        document.body.addEventListener("keydown", keydownHandler, true);
-        document.body.addEventListener("keyup", keyupHandler, true);
-        
-        // Click handler for buttons
-        dlg.one("click", ".dialog-button", function (e) {
-            brackets._dismissDialog(dlg, $(this).attr("data-button-id"));
-        });
-
-        // Run the dialog
-        dlg.modal({
-            backdrop: "static",
-            show: true
-        }).on("hide", function (e) {
-            // Remove key event handlers
-            document.body.removeEventListener("keydown", keydownHandler, true);
-            document.body.removeEventListener("keyup", keyupHandler, true);
-        });
-        return result;
-    };
-    
-    /**
-     * Immediately closes any dialog instances with the given class. The dialog callback for each instance will 
-     * be called with the special buttonId brackets.DIALOG_CANCELED (note: callback is run asynchronously).
-     */
-    brackets.cancelModalDialogIfOpen = function (dlgClass) {
-        $("." + dlgClass + ".instance").each(function (dlg) {
-            if (dlg.is(":visible")) {   // Bootstrap breaks if try to hide dialog that's already hidden
-                brackets._dismissDialog(dlg, brackets.DIALOG_CANCELED);
-            }
-        });
-    };
-    
-    brackets._dismissDialog = function (dlg, buttonId) {
-        dlg.data("buttonId", buttonId);
-        dlg.modal(true).hide();
-    };
-
+    brackets.platform = (global.navigator.platform === "MacIntel" || global.navigator.platform === "MacPPC") ? "mac" : "win";
 
     // Main Brackets initialization
     $(document).ready(function () {
-
-        var _enableJSLint = true;
         
         function initListeners() {
             // Prevent unhandled drag and drop of files into the browser from replacing 
@@ -246,163 +134,42 @@ define(function (require, exports, module) {
                 ProjectManager.openProject();
             });
 
+
             // Handle toggling top level disclosure arrows of file list area
-            $("#open-files-disclosure-arrow").click(function () {
-                $(this).toggleClass("disclosure-arrow-closed");
+            $("#open-files-header").click(function () {
+                $("#open-files-disclosure-arrow").toggleClass("disclosure-arrow-closed");
                 $("#open-files-container").toggle();
             });
-            $("#project-files-disclosure-arrow").click(function () {
-                $(this).toggleClass("disclosure-arrow-closed");
+            $("#project-files-header").click(function () {
+                $("#project-files-disclosure-arrow").toggleClass("disclosure-arrow-closed");
                 $("#project-files-container").toggle();
             });
-       
         }
         
-        function runJSLint() {
-            var currentDoc = DocumentManager.getCurrentDocument();
-            var ext = currentDoc ? PathUtils.filenameExtension(currentDoc.file.fullPath) : "";
-            var lintResults = $("#jslint-results");
-            var goldStar = $("#gold-star");
-            
-            if (_enableJSLint && /^(\.js|\.htm|\.html)$/i.test(ext)) {
-                var text = currentDoc.getText();
-                
-                // If a line contains only whitespace, remove the whitespace
-                // This should be doable with a regexp: text.replace(/\r[\x20|\t]+\r/g, "\r\r");,
-                // but that doesn't work.
-                var i, arr = text.split("\n");
-                for (i = 0; i < arr.length; i++) {
-                    if (!arr[i].match(/\S/)) {
-                        arr[i] = "";
-                    }
-                }
-                text = arr.join("\n");
-                
-                var result = JSLINT(text, null);
-                
-                if (!result) {
-                    var errorTable = $("<table class='zebra-striped condensed-table'>")
-                                       .append("<tbody>");
-                    var selectedRow;
-                    
-                    JSLINT.errors.forEach(function (item, i) {
-                        if (item) {
-                            var makeCell = function (content) {
-                                return $("<td/>").text(content);
-                            };
-                            
-                            // Add row to error table
-                            var row = $("<tr/>")
-                                .append(makeCell(item.line))
-                                .append(makeCell(item.reason))
-                                .append(makeCell(item.evidence || ""))
-                                .appendTo(errorTable);
-                            
-                            row.click(function () {
-                                if (selectedRow) {
-                                    selectedRow.removeClass("selected");
-                                }
-                                row.addClass("selected");
-                                selectedRow = row;
-                                currentDoc.setCursor(item.line - 1, item.character - 1);
-                                EditorManager.focusEditor();
-                            });
-                        }
-                    });
-
-                    $("#jslint-results .table-container")
-                        .empty()
-                        .append(errorTable);
-                    lintResults.show();
-                    goldStar.hide();
-                } else {
-                    lintResults.hide();
-                    goldStar.show();
-                }
-            } else {
-                // JSLint is disabled or does not apply to the current file, hide
-                // both the results and the gold star
-                lintResults.hide();
-                goldStar.hide();
-            }
-            
-            EditorManager.resizeEditor();
-        }
         
-        function initMenus() {
-            // Implements the File menu items
-            $("#menu-file-new").click(function () {
-                CommandManager.execute(Commands.FILE_NEW);
-            });
-            $("#menu-file-open").click(function () {
-                CommandManager.execute(Commands.FILE_OPEN);
-            });
-            $("#menu-file-close").click(function () {
-                CommandManager.execute(Commands.FILE_CLOSE);
-            });
-            $("#menu-file-save").click(function () {
-                CommandManager.execute(Commands.FILE_SAVE);
-            });
-            $("#menu-file-quit").click(function () {
-                CommandManager.execute(Commands.FILE_QUIT);
-            });
-
-            // Implements the 'Run Tests' menu to bring up the Jasmine unit test window
-            var testWindow = null;
-            $("#menu-debug-runtests").click(function () {
-                if (testWindow) {
-                    try {
-                        testWindow.location.reload();
-                    } catch (e) {
-                        testWindow = null;  // the window was probably closed
-                    }
-                }
-
-                if (!testWindow) {
-                    testWindow = window.open("../test/SpecRunner.html");
-                    testWindow.location.reload(); // if it was opened before, we need to reload because it will be cached
-                }
-            });
-            
-            // Other debug menu items
-//            $("#menu-debug-wordwrap").click(function() {
-//                editor.setOption("lineWrapping", !(editor.getOption("lineWrapping")));
-//            });     
-            
-            $("#menu-debug-jslint").click(function () {
-                _enableJSLint = !_enableJSLint;
-                runJSLint();
-                $("#jslint-enabled-checkbox").css("display", _enableJSLint ? "" : "none");
-            });
-        }
-
         function initCommandHandlers() {
-            FileCommandHandlers.init($("#main-toolbar .title"));
+            DocumentCommandHandlers.init($("#main-toolbar .title"));
         }
 
         function initKeyBindings() {
             // Register keymaps and install the keyboard handler
             // TODO: (issue #268) show keyboard equivalents in the menus
-            var _globalKeymap = new KeyMap({
-                "Ctrl-O": Commands.FILE_OPEN,
-                "Ctrl-S": Commands.FILE_SAVE,
-                "Ctrl-W": Commands.FILE_CLOSE
+            var _globalKeymap = KeyMap.create({
+                "bindings": [
+                    {"Ctrl-O": Commands.FILE_OPEN},
+                    {"Ctrl-S": Commands.FILE_SAVE},
+                    {"Ctrl-W": Commands.FILE_CLOSE},
+                    {"Ctrl-Shift-O": Commands.FILE_QUICK_NAVIGATE},
+                    {"Ctrl-Shift-F": Commands.FIND_IN_FILES},
+                    {"Ctrl-R": Commands.FILE_RELOAD, "platform": "mac"},
+                    {"F5"    : Commands.FILE_RELOAD, "platform": "win"}
+                ],
+                "platform": brackets.platform
             });
             KeyBindingManager.installKeymap(_globalKeymap);
 
             $(document.body).keydown(function (event) {
-                var keyDescriptor = [];
-                if (event.metaKey || event.ctrlKey) {
-                    keyDescriptor.push("Ctrl");
-                }
-                if (event.altKey) {
-                    keyDescriptor.push("Alt");
-                }
-                if (event.shiftKey) {
-                    keyDescriptor.push("Shift");
-                }
-                keyDescriptor.push(String.fromCharCode(event.keyCode).toUpperCase());
-                if (KeyBindingManager.handleKey(keyDescriptor.join("-"))) {
+                if (KeyBindingManager.handleKey(KeyMap.translateKeyboardEvent(event))) {
                     event.preventDefault();
                 }
             });
@@ -412,6 +179,7 @@ define(function (require, exports, module) {
             // TODO: (issue 269) to support IE, need to listen to document instead (and even then it may not work when focus is in an input field?)
             $(window).focus(function () {
                 FileSyncManager.syncOpenDocuments();
+                FileIndexManager.markDirty();
             });
             
             $(window).unload(function () {
@@ -423,25 +191,43 @@ define(function (require, exports, module) {
             });
         }
 
+        // Add the platform (mac or win) to the body tag so we can have platform-specific CSS rules
+        $("body").addClass("platform-" + brackets.platform);
+
 
         EditorManager.setEditorHolder($('#editorHolder'));
     
         initListeners();
         initProject();
-        initMenus();
+        Menus.init();
         initCommandHandlers();
         initKeyBindings();
         initWindowListeners();
-        
-        $(DocumentManager).on("currentDocumentChange", function () {
-            runJSLint();
-        });
-        
-        $(DocumentManager).on("documentSaved", function (event, document) {
-            if (document === DocumentManager.getCurrentDocument()) {
-                runJSLint();
-            }
-        });
+
+        // Load extensions
+
+        // FUTURE (JRB): As we get more fine-grained performance measurement, move this out of core application startup
+
+        // Loading extensions requires creating new require.js contexts, which requires access to the global 'require' object
+        // that always gets hidden by the 'require' in the AMD wrapper. We store this in the brackets object here so that 
+        // the ExtensionLoader doesn't have to have access to the global object.
+        brackets.libRequire = global.require;
+
+        // Also store our current require.js context (the one that loads brackets core modules) so that extensions can use it
+        // Note: we change the name to "getModule" because this won't do exactly the same thing as 'require' in AMD-wrapped
+        // modules. The extension will only be able to load modules that have already been loaded once.
+        brackets.getModule = require;
+
+        ExtensionLoader.loadAllExtensionsInNativeDirectory(
+            FileUtils.getNativeBracketsDirectoryPath() + "/extensions/default",
+            "extensions/default"
+        );
+        ExtensionLoader.loadAllExtensionsInNativeDirectory(
+            FileUtils.getNativeBracketsDirectoryPath() + "/extensions/user",
+            "extensions/user"
+        );
+
+        PerfUtils.addMeasurement("Application Startup");
     });
     
 });
