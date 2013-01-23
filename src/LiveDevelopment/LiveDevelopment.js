@@ -439,7 +439,7 @@ define(function LiveDevelopment(require, exports, module) {
         // Load the right document (some agents are waiting for the page's load event)
         var doc = _getCurrentDocument();
         if (doc) {
-            Inspector.Page.navigate(doc.root.url);
+            Inspector.Page.navigate(_urlForDocument(doc));
         } else {
             Inspector.Page.reload();
         }
@@ -458,6 +458,10 @@ define(function LiveDevelopment(require, exports, module) {
         var promises = loadAgents();
         _setStatus(STATUS_LOADING_AGENTS);
         $.when.apply(undefined, promises).then(_onLoad, _onError);
+    }
+
+    function _urlForDocument(doc) {
+        return doc.root.url.replace("file://", "http://localhost:3000");
     }
 
     /** Open the Connection and go live */
@@ -509,7 +513,7 @@ define(function LiveDevelopment(require, exports, module) {
                 }
             }
 
-            var url = doc.root.url;
+            var url = _urlForDocument(doc);
 
             _setStatus(STATUS_CONNECTING);
             Inspector.connectToURL(url).then(result.resolve, function onConnectFail(err) {
